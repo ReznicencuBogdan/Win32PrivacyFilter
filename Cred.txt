@@ -1,0 +1,78 @@
+Credui.lib
+
+#include <wincred.h>
+
+
+WCHAR wszUsername[CREDUI_MAX_USERNAME_LENGTH + 1];
+WCHAR wszPassword[CREDUI_MAX_PASSWORD_LENGTH + 1];
+WCHAR wszDomain[CRED_MAX_DOMAIN_TARGET_NAME_LENGTH + 1];
+
+DWORD cchUsername = _countof(wszUsername);
+DWORD cchPassword = _countof(wszPassword);
+DWORD cchDomain   = _countof(wszDomain);
+
+ULONG ulAuthPkg     = 0;
+PVOID pAuthBuff     = NULL;
+ULONG cbAuthBuff    = 0;
+PVOID pOutAuthBuff  = NULL;
+ULONG cbOutAuthBuff = 0;
+BOOL  fSave		    = FALSE;
+
+HANDLE tkLogonToken = nullptr;
+
+CREDUI_INFOW ci = { 
+	sizeof(CREDUI_INFOW), 
+	NULL, 
+	L"Please enter your password",
+	L"Authentificate HorizonDova Secure Folder", 
+	NULL 
+};
+
+if (CredUIPromptForWindowsCredentialsW(&ci, 0, &ulAuthPkg, pAuthBuff, cbAuthBuff, &pOutAuthBuff, &cbOutAuthBuff, &fSave, CREDUIWIN_GENERIC) != 0) {
+	OutputDebugString(L"CredUIPromptForWindowsCredentialsW failed!");
+	
+	goto __cred_ui_fail;
+}
+
+if (CredUnPackAuthenticationBufferW(CRED_PACK_PROTECTED_CREDENTIALS, pOutAuthBuff, cbOutAuthBuff, wszUsername, &cchUsername, wszDomain, &cchDomain, wszPassword, &cchPassword)) {
+	if (!GetComputerName(wszDomain, &cchDomain)) {
+		OutputDebugString(L"Failed getting the domain for the registered user!");
+
+		goto __cred_ui_fail;
+	}
+
+	OutputDebugString(wszUsername);
+	OutputDebugString(wszPassword);
+	OutputDebugString(wszDomain);
+
+	if (LogonUser(wszUsername, wszDomain, wszPassword, LOGON32_LOGON_NETWORK,LOGON32_PROVIDER_DEFAULT,&tkLogonToken)){
+		OutputDebugString(L"Logged in!");
+
+		CloseHandle(tkLogonToken);
+	}
+	else { 
+		OutputDebugString(L"Failed Logging In!"); 
+
+		goto __cred_ui_fail;
+	}
+}
+else {
+	OutputDebugString(L"Failed unpacking");
+
+	goto __cred_ui_fail;
+}
+
+// If I get here then everything worked fine.
+goto __cred_ui_end;
+
+
+
+if (pOutAuthBuff) {
+	SecureZeroMemory(pOutAuthBuff, cbOutAuthBuff);
+	CoTaskMemFree(pOutAuthBuff);
+	pOutAuthBuff = NULL;
+}
+
+SecureZeroMemory(wszPassword, cchPassword);
+SecureZeroMemory(wszUsername, cchPassword);
+
